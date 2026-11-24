@@ -1,5 +1,7 @@
 using ApiGateway.Configuration;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http;
+using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,10 +20,35 @@ builder.Services.AddOptions<DownstreamServicesOptions>()
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    var authOptions = builder.Configuration.GetSection(AuthenticationOptions.SectionName).Get<AuthenticationOptions>()!;
+    options.Authority = authOptions.Authority;
+    options.Audience = authOptions.Audience;
+    options.RequireHttpsMetadata = builder.Environment.IsProduction();
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidIssuer = authOptions.Authority,
+        ValidateAudience = true,
+        ValidAudience = authOptions.Audience
+    };
+});
+
+builder.Services.AddAuthorization();
+
 builder.Services.AddReverseProxy()
     .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
 
 var app = builder.Build();
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapReverseProxy(proxyPipeline =>
 {
