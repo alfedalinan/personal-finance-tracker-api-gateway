@@ -191,4 +191,58 @@ public class ConfigurationTests
         Assert.NotNull(financeCluster.Destinations);
         Assert.Equal("https://localhost:5002", financeCluster.Destinations["destination1"].Address);
     }
+
+    [Fact]
+    public void YarpConfiguration_TransformsAndHealthChecks_BindCorrectly()
+    {
+        var configData = new Dictionary<string, string?>
+        {
+            {"ReverseProxy:Routes:auth-route:ClusterId", "identity-cluster"},
+            {"ReverseProxy:Routes:auth-route:Match:Path", "/auth/{**catch-all}"},
+            {"ReverseProxy:Routes:auth-route:Transforms:0:PathRemovePrefix", "/auth"},
+            {"ReverseProxy:Routes:auth-route:Transforms:1:ResponseHeader", "Server"},
+            {"ReverseProxy:Routes:auth-route:Transforms:1:Remove", "true"},
+            
+            {"ReverseProxy:Clusters:identity-cluster:Destinations:destination1:Address", "https://localhost:5001"},
+            {"ReverseProxy:Clusters:identity-cluster:HealthCheck:Active:Enabled", "true"},
+            {"ReverseProxy:Clusters:identity-cluster:HealthCheck:Active:Interval", "00:00:10"},
+            {"ReverseProxy:Clusters:identity-cluster:HealthCheck:Active:Timeout", "00:00:05"},
+            {"ReverseProxy:Clusters:identity-cluster:HealthCheck:Active:Policy", "ServiceProviderPolicy"},
+            {"ReverseProxy:Clusters:identity-cluster:HealthCheck:Active:Path", "/health"},
+            {"ReverseProxy:Clusters:identity-cluster:HealthCheck:Passive:Enabled", "true"},
+            {"ReverseProxy:Clusters:identity-cluster:HealthCheck:Passive:Policy", "ServiceProviderPolicy"},
+            {"ReverseProxy:Clusters:identity-cluster:HealthCheck:Passive:ReactivationPeriod", "00:01:00"}
+        };
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(configData)
+            .Build();
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddReverseProxy().LoadFromConfig(configuration.GetSection("ReverseProxy"));
+
+        var serviceProvider = services.BuildServiceProvider();
+        var proxyConfigProvider = serviceProvider.GetRequiredService<Yarp.ReverseProxy.Configuration.IProxyConfigProvider>();
+        var proxyConfig = proxyConfigProvider.GetConfig();
+
+        Assert.NotNull(proxyConfig);
+
+        var authRoute = proxyConfig.Routes.FirstOrDefault(r => r.RouteId == "auth-route");
+        Assert.NotNull(authRoute);
+        Assert.NotNull(authRoute.Transforms);
+        Assert.NotEmpty(authRoute.Transforms);
+
+        var identityCluster = proxyConfig.Clusters.FirstOrDefault(c => c.ClusterId == "identity-cluster");
+        Assert.NotNull(identityCluster);
+        Assert.NotNull(identityCluster.HealthCheck);
+        Assert.NotNull(identityCluster.HealthCheck.Active);
+        Assert.True(identityCluster.HealthCheck.Active.Enabled);
+        Assert.Equal(TimeSpan.FromSeconds(10), identityCluster.HealthCheck.Active.Interval);
+        Assert.Equal("/health", identityCluster.HealthCheck.Active.Path);
+
+        Assert.NotNull(identityCluster.HealthCheck.Passive);
+        Assert.True(identityCluster.HealthCheck.Passive.Enabled);
+        Assert.Equal(TimeSpan.FromMinutes(1), identityCluster.HealthCheck.Passive.ReactivationPeriod);
+    }
 }

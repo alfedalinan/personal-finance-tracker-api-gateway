@@ -27,6 +27,14 @@ app.MapReverseProxy(proxyPipeline =>
 {
     proxyPipeline.Use(async (context, next) =>
     {
+        context.Response.OnStarting(() =>
+        {
+            context.Response.Headers.Remove("Server");
+            context.Response.Headers.Remove("X-Powered-By");
+            context.Response.Headers.Remove("X-AspNet-Version");
+            return Task.CompletedTask;
+        });
+
         try
         {
             await next();
