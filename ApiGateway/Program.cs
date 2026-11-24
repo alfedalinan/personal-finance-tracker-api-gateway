@@ -1,4 +1,5 @@
 using ApiGateway.Configuration;
+using Microsoft.AspNetCore.Http;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,7 +23,33 @@ builder.Services.AddReverseProxy()
 
 var app = builder.Build();
 
-app.MapReverseProxy();
+app.MapReverseProxy(proxyPipeline =>
+{
+    proxyPipeline.Use(async (context, next) =>
+    {
+        try
+        {
+            await next();
+
+            var errorFeature = context.Features.Get<Yarp.ReverseProxy.Forwarder.IForwarderErrorFeature>();
+            if (errorFeature != null && !context.Response.HasStarted)
+            {
+                context.Response.StatusCode = errorFeature.Error switch
+                {
+                    Yarp.ReverseProxy.Forwarder.ForwarderError.RequestTimedOut => StatusCodes.Status504GatewayTimeout,
+                    _ => StatusCodes.Status502BadGateway
+                };
+            }
+        }
+        catch (Exception)
+        {
+            if (!context.Response.HasStarted)
+            {
+                context.Response.StatusCode = StatusCodes.Status502BadGateway;
+            }
+        }
+    });
+});
 
 app.MapGet("/", () => "Personal Finance Tracker API Gateway is running!");
 
