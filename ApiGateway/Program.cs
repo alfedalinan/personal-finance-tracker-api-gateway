@@ -31,12 +31,24 @@ builder.Services.AddAuthentication(options =>
     options.Authority = authOptions.Authority;
     options.Audience = authOptions.Audience;
     options.RequireHttpsMetadata = builder.Environment.IsProduction();
+    
+    if (!string.IsNullOrEmpty(authOptions.MetadataAddress))
+    {
+        options.MetadataAddress = authOptions.MetadataAddress;
+    }
+    
+    if (authOptions.BackchannelTimeoutSeconds > 0)
+    {
+        options.BackchannelTimeout = TimeSpan.FromSeconds(authOptions.BackchannelTimeoutSeconds);
+    }
+
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuer = true,
         ValidIssuer = authOptions.Authority,
         ValidateAudience = true,
-        ValidAudience = authOptions.Audience
+        ValidAudience = authOptions.Audience,
+        ValidateIssuerSigningKey = true
     };
 });
 

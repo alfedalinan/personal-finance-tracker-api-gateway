@@ -15,4 +15,8 @@ public class AuthenticationOptions
 
     [Required(ErrorMessage = "ClientId is required.")]
     public string ClientId { get; set; } = string.Empty;
+
+    public int BackchannelTimeoutSeconds { get; set; } = 30;
+
+    public string? MetadataAddress { get; set; }
 }
