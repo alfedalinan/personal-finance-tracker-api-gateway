@@ -44,11 +44,13 @@ builder.Services.AddAuthentication(options =>
 
     options.TokenValidationParameters = new TokenValidationParameters
     {
-        ValidateIssuer = true,
+        ValidateIssuer = authOptions.ValidateIssuer,
         ValidIssuer = authOptions.Authority,
-        ValidateAudience = true,
+        ValidateAudience = authOptions.ValidateAudience,
         ValidAudience = authOptions.Audience,
-        ValidateIssuerSigningKey = true
+        ValidateLifetime = authOptions.ValidateLifetime,
+        ValidateIssuerSigningKey = authOptions.ValidateIssuerSigningKey,
+        ClockSkew = TimeSpan.FromMinutes(authOptions.ClockSkewMinutes)
     };
 });
 

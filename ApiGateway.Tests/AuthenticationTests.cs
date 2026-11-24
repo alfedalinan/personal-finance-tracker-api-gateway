@@ -73,15 +73,17 @@ public class AuthenticationTests
     }
 
     [Fact]
-    public void AuthenticationOptions_BindsNewPropertiesSuccessfully()
+    public void AuthenticationOptions_BindsClockSkewSuccessfully()
     {
         var configData = new Dictionary<string, string?>
         {
             {"Authentication:Authority", "https://auth.example.com"},
             {"Authentication:Audience", "test-audience"},
             {"Authentication:ClientId", "test-client"},
-            {"Authentication:BackchannelTimeoutSeconds", "45"},
-            {"Authentication:MetadataAddress", "https://auth.example.com/.well-known/openid-configuration"}
+            {"Authentication:ClockSkewMinutes", "10"},
+            {"Authentication:ValidateLifetime", "true"},
+            {"Authentication:ValidateIssuer", "true"},
+            {"Authentication:ValidateAudience", "true"}
         };
 
         var configuration = new ConfigurationBuilder()
@@ -97,8 +99,59 @@ public class AuthenticationTests
         var options = serviceProvider.GetRequiredService<IOptions<ApiGateway.Configuration.AuthenticationOptions>>().Value;
 
         Assert.NotNull(options);
-        Assert.Equal(45, options.BackchannelTimeoutSeconds);
-        Assert.Equal("https://auth.example.com/.well-known/openid-configuration", options.MetadataAddress);
+        Assert.Equal(10, options.ClockSkewMinutes);
+        Assert.True(options.ValidateLifetime);
+        Assert.True(options.ValidateIssuer);
+        Assert.True(options.ValidateAudience);
+    }
+
+    [Fact]
+    public void JwtBearerOptions_ConfiguresTokenValidationParametersAndClockSkew()
+    {
+        var configData = new Dictionary<string, string?>
+        {
+            {"Authentication:Authority", "https://auth.example.com"},
+            {"Authentication:Audience", "test-audience"},
+            {"Authentication:ClientId", "test-client"},
+            {"Authentication:ClockSkewMinutes", "5"}
+        };
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(configData)
+            .Build();
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(configuration);
+
+        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddJwtBearer(options =>
+        {
+            var authOptions = configuration.GetSection(ApiGateway.Configuration.AuthenticationOptions.SectionName).Get<ApiGateway.Configuration.AuthenticationOptions>()!;
+            options.Authority = authOptions.Authority;
+            options.Audience = authOptions.Audience;
+            options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+            {
+                ValidateIssuer = authOptions.ValidateIssuer,
+                ValidIssuer = authOptions.Authority,
+                ValidateAudience = authOptions.ValidateAudience,
+                ValidAudience = authOptions.Audience,
+                ValidateLifetime = authOptions.ValidateLifetime,
+                ValidateIssuerSigningKey = authOptions.ValidateIssuerSigningKey,
+                ClockSkew = TimeSpan.FromMinutes(authOptions.ClockSkewMinutes)
+            };
+        });
+
+        var serviceProvider = services.BuildServiceProvider();
+        var jwtOptionsMonitor = serviceProvider.GetRequiredService<IOptionsMonitor<JwtBearerOptions>>();
+        var jwtOptions = jwtOptionsMonitor.Get(JwtBearerDefaults.AuthenticationScheme);
+
+        Assert.NotNull(jwtOptions);
+        Assert.NotNull(jwtOptions.TokenValidationParameters);
+        Assert.True(jwtOptions.TokenValidationParameters.ValidateIssuer);
+        Assert.True(jwtOptions.TokenValidationParameters.ValidateAudience);
+        Assert.True(jwtOptions.TokenValidationParameters.ValidateLifetime);
+        Assert.True(jwtOptions.TokenValidationParameters.ValidateIssuerSigningKey);
+        Assert.Equal(TimeSpan.FromMinutes(5), jwtOptions.TokenValidationParameters.ClockSkew);
     }
 
     [Fact]

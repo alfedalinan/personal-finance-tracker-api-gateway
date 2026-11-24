@@ -19,4 +19,15 @@ public class AuthenticationOptions
     public int BackchannelTimeoutSeconds { get; set; } = 30;
 
     public string? MetadataAddress { get; set; }
+
+    [Range(0, 60, ErrorMessage = "Clock skew minutes must be between 0 and 60.")]
+    public int ClockSkewMinutes { get; set; } = 5;
+
+    public bool ValidateLifetime { get; set; } = true;
+
+    public bool ValidateIssuer { get; set; } = true;
+
+    public bool ValidateAudience { get; set; } = true;
+
+    public bool ValidateIssuerSigningKey { get; set; } = true;
 }
