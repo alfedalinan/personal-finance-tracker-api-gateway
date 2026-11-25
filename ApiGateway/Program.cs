@@ -1,5 +1,6 @@
 using ApiGateway.Authorization;
 using ApiGateway.Configuration;
+using ApiGateway.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -27,6 +28,8 @@ builder.Services.AddOptions<ApiGateway.Authorization.AuthorizationOptions>()
     .ValidateOnStart();
 
 builder.Services.AddSingleton<IAuthorizationHandler, ScopeHandler>();
+
+builder.Services.AddApiGatewayRateLimiting(builder.Configuration);
 
 builder.Services.AddAuthentication(options =>
 {
@@ -108,9 +111,12 @@ var app = builder.Build();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapReverseProxy(proxyPipeline =>
 {
+    proxyPipeline.UseRateLimiter();
+
     proxyPipeline.Use(async (context, next) =>
     {
         context.Response.OnStarting(() =>
