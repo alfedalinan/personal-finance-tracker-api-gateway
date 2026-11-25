@@ -1,9 +1,12 @@
 using ApiGateway.Authorization;
 using ApiGateway.Configuration;
+using ApiGateway.Middleware;
 using ApiGateway.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -30,6 +33,39 @@ builder.Services.AddOptions<ApiGateway.Authorization.AuthorizationOptions>()
 builder.Services.AddSingleton<IAuthorizationHandler, ScopeHandler>();
 
 builder.Services.AddApiGatewayRateLimiting(builder.Configuration);
+
+var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        if (allowedOrigins.Length > 0)
+        {
+            policy.WithOrigins(allowedOrigins)
+                  .AllowAnyHeader()
+                  .AllowAnyMethod();
+        }
+        else
+        {
+            policy.AllowAnyOrigin()
+                  .AllowAnyHeader()
+                  .AllowAnyMethod();
+        }
+    });
+});
+
+var maxRequestBodySize = builder.Configuration.GetValue<long?>("MaxRequestBodySize") ?? 31457280;
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = maxRequestBodySize;
+});
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 builder.Services.AddAuthentication(options =>
 {
@@ -109,6 +145,60 @@ builder.Services.AddReverseProxy()
 
 var app = builder.Build();
 
+app.UseExceptionHandler(exceptionHandlerApp =>
+{
+    exceptionHandlerApp.Run(async context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        context.Response.ContentType = "application/json";
+
+        var correlationId = context.Items["CorrelationId"]?.ToString()
+            ?? context.Request.Headers["X-Correlation-ID"].FirstOrDefault()
+            ?? Guid.NewGuid().ToString();
+
+        var responseObj = new
+        {
+            error = "Internal Server Error",
+            message = "An unexpected error occurred processing your request.",
+            correlationId = correlationId,
+            statusCode = 500
+        };
+
+        await context.Response.WriteAsJsonAsync(responseObj);
+    });
+});
+
+app.UseForwardedHeaders();
+app.UseMiddleware<CorrelationIdMiddleware>();
+
+app.Use(async (context, next) =>
+{
+    var maxBodySizeLimit = builder.Configuration.GetValue<long?>("MaxRequestBodySize") ?? 31457280;
+    var maxRequestBodySizeFeature = context.Features.Get<IHttpMaxRequestBodySizeFeature>();
+    if (maxRequestBodySizeFeature != null && !maxRequestBodySizeFeature.IsReadOnly)
+    {
+        maxRequestBodySizeFeature.MaxRequestBodySize = maxBodySizeLimit;
+    }
+
+    if (context.Request.ContentLength.HasValue && context.Request.ContentLength.Value > maxBodySizeLimit)
+    {
+        context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+        context.Response.ContentType = "application/json";
+        var correlationId = context.Items["CorrelationId"]?.ToString() ?? context.Request.Headers["X-Correlation-ID"].FirstOrDefault();
+        await context.Response.WriteAsJsonAsync(new
+        {
+            error = "Payload Too Large",
+            message = $"Request body exceeds the maximum allowed size of {maxBodySizeLimit} bytes.",
+            correlationId = correlationId,
+            statusCode = 413
+        });
+        return;
+    }
+
+    await next();
+});
+
+app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
