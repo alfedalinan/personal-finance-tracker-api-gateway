@@ -1,5 +1,7 @@
+using ApiGateway.Authorization;
 using ApiGateway.Configuration;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.IdentityModel.Tokens;
 
@@ -19,6 +21,12 @@ builder.Services.AddOptions<DownstreamServicesOptions>()
     .Bind(builder.Configuration.GetSection(DownstreamServicesOptions.SectionName))
     .ValidateDataAnnotations()
     .ValidateOnStart();
+
+builder.Services.AddOptions<ApiGateway.Authorization.AuthorizationOptions>()
+    .Bind(builder.Configuration.GetSection(ApiGateway.Authorization.AuthorizationOptions.SectionName))
+    .ValidateOnStart();
+
+builder.Services.AddSingleton<IAuthorizationHandler, ScopeHandler>();
 
 builder.Services.AddAuthentication(options =>
 {
@@ -54,7 +62,44 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    var authzConfig = builder.Configuration.GetSection(ApiGateway.Authorization.AuthorizationOptions.SectionName).Get<ApiGateway.Authorization.AuthorizationOptions>();
+
+    if (authzConfig?.Policies != null && authzConfig.Policies.Count > 0)
+    {
+        foreach (var kvp in authzConfig.Policies)
+        {
+            var policyName = kvp.Key;
+            var policyConfig = kvp.Value;
+            options.AddPolicy(policyName, policy =>
+            {
+                policy.RequireAuthenticatedUser();
+                policy.Requirements.Add(new ScopeRequirement(policyConfig.Scopes, policyConfig.Roles));
+            });
+        }
+    }
+    else
+    {
+        options.AddPolicy("RequireFinanceRead", policy =>
+        {
+            policy.RequireAuthenticatedUser();
+            policy.Requirements.Add(new ScopeRequirement(new[] { "finance.read" }, new[] { "FinanceReader", "Admin" }));
+        });
+
+        options.AddPolicy("RequireFinanceWrite", policy =>
+        {
+            policy.RequireAuthenticatedUser();
+            policy.Requirements.Add(new ScopeRequirement(new[] { "finance.write" }, new[] { "FinanceWriter", "Admin" }));
+        });
+
+        options.AddPolicy("RequireAdmin", policy =>
+        {
+            policy.RequireAuthenticatedUser();
+            policy.Requirements.Add(new ScopeRequirement(Enumerable.Empty<string>(), new[] { "Admin" }));
+        });
+    }
+});
 
 builder.Services.AddReverseProxy()
     .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
