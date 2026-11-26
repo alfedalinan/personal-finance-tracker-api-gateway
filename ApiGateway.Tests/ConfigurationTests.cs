@@ -200,8 +200,9 @@ public class ConfigurationTests
             {"ReverseProxy:Routes:auth-route:ClusterId", "identity-cluster"},
             {"ReverseProxy:Routes:auth-route:Match:Path", "/auth/{**catch-all}"},
             {"ReverseProxy:Routes:auth-route:Transforms:0:PathRemovePrefix", "/auth"},
-            {"ReverseProxy:Routes:auth-route:Transforms:1:ResponseHeader", "Server"},
-            {"ReverseProxy:Routes:auth-route:Transforms:1:Set", ""},
+            {"ReverseProxy:Routes:auth-route:Transforms:1:PathPrefix", "/api/auth"},
+            {"ReverseProxy:Routes:auth-route:Transforms:2:ResponseHeader", "Server"},
+            {"ReverseProxy:Routes:auth-route:Transforms:2:Set", ""},
             
             {"ReverseProxy:Clusters:identity-cluster:Destinations:destination1:Address", "https://localhost:5001"},
             {"ReverseProxy:Clusters:identity-cluster:HealthCheck:Active:Enabled", "true"},

@@ -8,11 +8,12 @@ This guide explains how to use the API Gateway with YARP (Yet Another Reverse Pr
 
 The API Gateway acts as topological single entry point for client requests, routing traffic to downstream microservices based on URL path prefixes.
 
-### A. Authentication & Identity Service (`/auth/*`)
+### A. Authentication & Identity Service (`/auth/*` including User Registration `POST /auth/register`)
 - **Gateway Prefix:** `/auth/{**catch-all}`
 - **Cluster ID:** `identity-cluster`
-- **Path Transform:** `PathRemovePrefix: "/auth"` (removes `/auth` before forwarding)
-- **Rate Limit Policy:** `strict-write-auth` (stricter limits for authentication endpoints)
+- **Path Transform:** `PathRemovePrefix: "/auth"` followed by `PathPrefix: "/api/auth"` (maps `/auth/register` to `/api/auth/register`)
+- **Rate Limit Policy:** `strict-write-auth` (enforces strict limits for registration and authentication write endpoints)
+- **Trailing Slash Robustness:** Correctly handles trailing slashes (e.g. `/auth/register/` maps to `/api/auth/register/` without malformed double slashes).
 
 ### B. Core Finance / Transaction API (`/api/*`)
 - **Gateway Prefix:** `/api/{**catch-all}`
@@ -27,7 +28,8 @@ The API Gateway acts as topological single entry point for client requests, rout
 
 | Client Request to Gateway | Path Transformation | Forwarded to Downstream Backend | Target Cluster |
 | :--- | :--- | :--- | :--- |
-| `https://<gateway>/auth/login` | Strips `/auth` | `<backend-address>/login` | `identity-cluster` |
+| `https://<gateway>/auth/register` | Removes `/auth`, adds `/api/auth` | `<backend-address>/api/auth/register` | `identity-cluster` |
+| `https://<gateway>/auth/login` | Removes `/auth`, adds `/api/auth` | `<backend-address>/api/auth/login` | `identity-cluster` |
 | `https://<gateway>/api/transactions` | Strips `/api` | `<backend-address>/transactions` | `finance-cluster` |
 
 ---
@@ -39,17 +41,17 @@ The backend destination addresses depend on your active ASP.NET Core environment
 ### Development (`appsettings.Development.json`)
 When running locally (`dotnet run`):
 - **Identity Service (`identity-cluster`):**
-  - Destination Address: `https://localhost:5001`
-  - Example: `GET https://localhost:5000/auth/user/profile` → `GET https://localhost:5001/user/profile`
+  - Destination Address: `http://localhost:3000` (or `https://localhost:5001`)
+  - Example: `GET https://localhost:5000/auth/user/profile` → `GET http://localhost:3000/api/auth/user/profile`
 - **Finance Service (`finance-cluster`):**
-  - Destination Address: `https://localhost:5002`
+  - Destination Address: `https://api.example.com` (or `https://localhost:5002`)
   - Example: `GET https://localhost:5000/api/transactions` → `GET https://localhost:5002/transactions`
 
 ### Production (`appsettings.json`)
 In production environments:
 - **Identity Service (`identity-cluster`):**
-  - Destination Address: `https://auth.example.com`
-  - Example: `GET https://gateway.example.com/auth/user/profile` → `GET https://auth.example.com/user/profile`
+  - Destination Address: `http://localhost:3000`
+  - Example: `GET https://gateway.example.com/auth/user/profile` → `GET http://localhost:3000/api/auth/user/profile`
 - **Finance Service (`finance-cluster`):**
   - Destination Address: `https://api.example.com`
   - Example: `GET https://gateway.example.com/api/transactions` → `GET https://api.example.com/transactions`
