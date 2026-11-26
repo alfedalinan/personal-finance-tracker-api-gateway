@@ -8,6 +8,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.IdentityModel.Tokens;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -33,6 +35,36 @@ builder.Services.AddOptions<ApiGateway.Authorization.AuthorizationOptions>()
 builder.Services.AddSingleton<IAuthorizationHandler, ScopeHandler>();
 
 builder.Services.AddApiGatewayRateLimiting(builder.Configuration);
+
+var otelConfig = builder.Configuration.GetSection("OpenTelemetry");
+var otelServiceName = otelConfig["ServiceName"] ?? "ApiGateway";
+var otelEndpoint = otelConfig["Endpoint"] ?? "http://localhost:4317";
+var samplingRatio = otelConfig.GetValue<double?>("SamplingRatio") ?? 0.1;
+
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService(otelServiceName))
+    .WithTracing(tracing => tracing
+        .AddAspNetCoreInstrumentation(options =>
+        {
+            options.EnrichWithHttpRequest = (activity, request) =>
+            {
+                activity.SetTag("http.client_ip", request.HttpContext.Connection.RemoteIpAddress?.ToString());
+                var correlationId = request.HttpContext.Items["CorrelationId"]?.ToString();
+                if (!string.IsNullOrEmpty(correlationId))
+                {
+                    activity.SetTag("correlation.id", correlationId);
+                }
+            };
+        })
+        .AddHttpClientInstrumentation()
+        .AddSource("ApiGateway.*")
+        .SetSampler(new ApiGateway.Observability.GatewayHeadSampler(samplingRatio))
+        .AddProcessor(new ApiGateway.Observability.TelemetrySanitizationProcessor())
+        .AddOtlpExporter(options =>
+        {
+            options.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.Grpc;
+            options.Endpoint = new Uri(otelEndpoint);
+        }));
 
 var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
 builder.Services.AddCors(options =>
@@ -170,6 +202,7 @@ app.UseExceptionHandler(exceptionHandlerApp =>
 
 app.UseForwardedHeaders();
 app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseMiddleware<OperationalLoggingMiddleware>();
 
 app.Use(async (context, next) =>
 {
