@@ -201,7 +201,7 @@ public class ConfigurationTests
             {"ReverseProxy:Routes:auth-route:Match:Path", "/auth/{**catch-all}"},
             {"ReverseProxy:Routes:auth-route:Transforms:0:PathRemovePrefix", "/auth"},
             {"ReverseProxy:Routes:auth-route:Transforms:1:ResponseHeader", "Server"},
-            {"ReverseProxy:Routes:auth-route:Transforms:1:Remove", "true"},
+            {"ReverseProxy:Routes:auth-route:Transforms:1:Set", ""},
             
             {"ReverseProxy:Clusters:identity-cluster:Destinations:destination1:Address", "https://localhost:5001"},
             {"ReverseProxy:Clusters:identity-cluster:HealthCheck:Active:Enabled", "true"},

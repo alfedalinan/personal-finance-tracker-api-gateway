@@ -277,3 +277,5 @@ app.MapReverseProxy(proxyPipeline =>
 app.MapGet("/", () => "Personal Finance Tracker API Gateway is running!");
 
 app.Run();
+
+public partial class Program { }
