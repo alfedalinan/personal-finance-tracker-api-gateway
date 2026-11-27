@@ -150,6 +150,54 @@ public class TenantIdInjectionMiddlewareTests
     }
 
     [Fact]
+    public async Task RespectsClaimPriorityOrder_WhenMultipleClaimsPresent()
+    {
+        var identity = new ClaimsIdentity(new[]
+        {
+            new Claim(ClaimTypes.Name, "testuser"),
+            new Claim("tid", "tenant-tid-priority"),
+            new Claim("tenantId", "tenant-primary-123"),
+            new Claim("tenant_id", "tenant-secondary-456")
+        }, "TestScheme");
+        var principal = new ClaimsPrincipal(identity);
+
+        using var host = await BuildTestHostAsync(principal);
+        var client = host.GetTestClient();
+
+        var response = await client.GetAsync("/api/resource");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Equal("tenant-primary-123", body);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("\t\n")]
+    public async Task ReturnsBadRequest_WhenTenantClaimIsEmptyOrWhitespace(string invalidTenantValue)
+    {
+        var identity = new ClaimsIdentity(new[]
+        {
+            new Claim(ClaimTypes.Name, "testuser"),
+            new Claim("tenantId", invalidTenantValue)
+        }, "TestScheme");
+        var principal = new ClaimsPrincipal(identity);
+
+        using var host = await BuildTestHostAsync(principal);
+        var client = host.GetTestClient();
+
+        var response = await client.GetAsync("/api/resource");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("application/json; charset=utf-8", response.Content.Headers.ContentType?.ToString());
+
+        var json = await response.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+        Assert.NotNull(json);
+        Assert.Equal("Bad Request", json["error"].ToString());
+    }
+
+    [Fact]
     public async Task ReturnsBadRequest_WhenAuthenticatedUserLacksTenantClaim()
     {
         var identity = new ClaimsIdentity(new[]

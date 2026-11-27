@@ -193,6 +193,46 @@ public class ConfigurationTests
     }
 
     [Fact]
+    public void YarpConfiguration_ApiRoute_PreservesApiPrefix()
+    {
+        var configData = new Dictionary<string, string?>
+        {
+            {"ReverseProxy:Routes:api-route:ClusterId", "finance-cluster"},
+            {"ReverseProxy:Routes:api-route:Match:Path", "/api/{**catch-all}"},
+            {"ReverseProxy:Routes:api-route:Transforms:0:ResponseHeader", "Server"},
+            {"ReverseProxy:Routes:api-route:Transforms:0:Set", ""},
+            {"ReverseProxy:Clusters:finance-cluster:Destinations:destination1:Address", "http://localhost:5088"}
+        };
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(configData)
+            .Build();
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddReverseProxy().LoadFromConfig(configuration.GetSection("ReverseProxy"));
+
+        var serviceProvider = services.BuildServiceProvider();
+        var proxyConfigProvider = serviceProvider.GetRequiredService<Yarp.ReverseProxy.Configuration.IProxyConfigProvider>();
+        var proxyConfig = proxyConfigProvider.GetConfig();
+
+        Assert.NotNull(proxyConfig);
+
+        var apiRoute = proxyConfig.Routes.FirstOrDefault(r => r.RouteId == "api-route");
+        Assert.NotNull(apiRoute);
+        Assert.Equal("/api/{**catch-all}", apiRoute.Match.Path);
+        
+        // Ensure no PathRemovePrefix transform exists on api-route
+        if (apiRoute.Transforms != null)
+        {
+            foreach (var transform in apiRoute.Transforms)
+            {
+                Assert.DoesNotContain("PathRemovePrefix", transform.Keys);
+            }
+        }
+    }
+
+    [Fact]
     public void YarpConfiguration_TransformsAndHealthChecks_BindCorrectly()
     {
         var configData = new Dictionary<string, string?>
