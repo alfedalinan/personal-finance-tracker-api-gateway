@@ -23,6 +23,11 @@ builder.Services.AddOptions<AuthenticationOptions>()
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
+builder.Services.AddOptions<TenantHeaderOptions>()
+    .Bind(builder.Configuration.GetSection(TenantHeaderOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
 builder.Services.AddOptions<DownstreamServicesOptions>()
     .Bind(builder.Configuration.GetSection(DownstreamServicesOptions.SectionName))
     .ValidateDataAnnotations()
@@ -234,6 +239,7 @@ app.Use(async (context, next) =>
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseMiddleware<TenantIdInjectionMiddleware>();
 app.UseRateLimiter();
 
 app.MapReverseProxy(proxyPipeline =>
