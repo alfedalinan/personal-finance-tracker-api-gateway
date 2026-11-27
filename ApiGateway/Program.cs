@@ -137,6 +137,11 @@ builder.Services.AddAuthentication(options =>
         ClockSkew = TimeSpan.FromMinutes(authOptions.ClockSkewMinutes)
     };
 
+    if (!string.IsNullOrEmpty(authOptions.JwtSecret))
+    {
+        options.TokenValidationParameters.IssuerSigningKey = new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(authOptions.JwtSecret));
+    }
+
     options.Events = new JwtBearerEvents
     {
         OnAuthenticationFailed = context =>

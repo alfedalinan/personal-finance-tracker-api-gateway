@@ -9,6 +9,33 @@ namespace ApiGateway.Tests;
 public class ConfigurationTests
 {
     [Fact]
+    public void AuthenticationOptions_JwtSecretBinding_Succeeds()
+    {
+        var configData = new Dictionary<string, string?>
+        {
+            {"Authentication:Authority", "https://auth.example.com"},
+            {"Authentication:Audience", "test-audience"},
+            {"Authentication:ClientId", "test-client"},
+            {"Authentication:JwtSecret", "my-super-secret-key-1234567890"}
+        };
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(configData)
+            .Build();
+
+        var services = new ServiceCollection();
+        services.AddOptions<AuthenticationOptions>()
+            .Bind(configuration.GetSection(AuthenticationOptions.SectionName))
+            .ValidateDataAnnotations();
+
+        var serviceProvider = services.BuildServiceProvider();
+        var options = serviceProvider.GetRequiredService<IOptions<AuthenticationOptions>>().Value;
+
+        Assert.NotNull(options);
+        Assert.Equal("my-super-secret-key-1234567890", options.JwtSecret);
+    }
+
+    [Fact]
     public void AuthenticationOptions_ValidConfiguration_BindsSuccessfully()
     {
         var configData = new Dictionary<string, string?>

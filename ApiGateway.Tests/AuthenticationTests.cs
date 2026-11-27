@@ -11,6 +11,56 @@ namespace ApiGateway.Tests;
 public class AuthenticationTests
 {
     [Fact]
+    public void JwtBearerOptions_ConfiguresSymmetricSigningKeyWhenJwtSecretProvided()
+    {
+        var configData = new Dictionary<string, string?>
+        {
+            {"Authentication:Authority", "https://auth.example.com"},
+            {"Authentication:Audience", "test-audience"},
+            {"Authentication:ClientId", "test-client"},
+            {"Authentication:JwtSecret", "my-super-secret-key-1234567890"}
+        };
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(configData)
+            .Build();
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(configuration);
+
+        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddJwtBearer(options =>
+        {
+            var authOptions = configuration.GetSection(ApiGateway.Configuration.AuthenticationOptions.SectionName).Get<ApiGateway.Configuration.AuthenticationOptions>()!;
+            options.Authority = authOptions.Authority;
+            options.Audience = authOptions.Audience;
+            options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidIssuer = authOptions.Authority,
+                ValidateAudience = true,
+                ValidAudience = authOptions.Audience,
+                ValidateIssuerSigningKey = true
+            };
+
+            if (!string.IsNullOrEmpty(authOptions.JwtSecret))
+            {
+                options.TokenValidationParameters.IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(authOptions.JwtSecret));
+            }
+        });
+
+        var serviceProvider = services.BuildServiceProvider();
+        var jwtOptionsMonitor = serviceProvider.GetRequiredService<IOptionsMonitor<JwtBearerOptions>>();
+        var jwtOptions = jwtOptionsMonitor.Get(JwtBearerDefaults.AuthenticationScheme);
+
+        Assert.NotNull(jwtOptions);
+        Assert.NotNull(jwtOptions.TokenValidationParameters);
+        Assert.NotNull(jwtOptions.TokenValidationParameters.IssuerSigningKey);
+        var symmetricKey = Assert.IsType<Microsoft.IdentityModel.Tokens.SymmetricSecurityKey>(jwtOptions.TokenValidationParameters.IssuerSigningKey);
+        Assert.Equal("my-super-secret-key-1234567890", System.Text.Encoding.UTF8.GetString(symmetricKey.Key));
+    }
+
+    [Fact]
     public async Task JwtBearerAuthentication_RegistersDefaultSchemesAndOptions()
     {
         var configData = new Dictionary<string, string?>

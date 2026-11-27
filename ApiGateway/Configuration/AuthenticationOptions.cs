@@ -30,4 +30,6 @@ public class AuthenticationOptions
     public bool ValidateAudience { get; set; } = true;
 
     public bool ValidateIssuerSigningKey { get; set; } = true;
+
+    public string? JwtSecret { get; set; }
 }
