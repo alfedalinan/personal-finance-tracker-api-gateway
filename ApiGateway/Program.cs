@@ -136,6 +136,29 @@ builder.Services.AddAuthentication(options =>
         ValidateIssuerSigningKey = authOptions.ValidateIssuerSigningKey,
         ClockSkew = TimeSpan.FromMinutes(authOptions.ClockSkewMinutes)
     };
+
+    options.Events = new JwtBearerEvents
+    {
+        OnAuthenticationFailed = context =>
+        {
+            var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+            logger.LogError(context.Exception, "JWT authentication failed: {Message}", context.Exception.Message);
+            return Task.CompletedTask;
+        },
+        OnTokenValidated = context =>
+        {
+            var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+            logger.LogInformation("JWT token successfully validated for user: {User}", context.Principal?.Identity?.Name);
+            return Task.CompletedTask;
+        },
+        OnMessageReceived = context =>
+        {
+            var authHeader = context.Request.Headers["Authorization"].FirstOrDefault();
+            var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+            logger.LogDebug("Authorization header received: {HeaderPresent}", !string.IsNullOrEmpty(authHeader));
+            return Task.CompletedTask;
+        }
+    };
 });
 
 builder.Services.AddAuthorization(options =>
@@ -245,6 +268,9 @@ app.UseRateLimiter();
 app.MapReverseProxy(proxyPipeline =>
 {
     proxyPipeline.UseRateLimiter();
+    proxyPipeline.UseAuthentication();
+    proxyPipeline.UseAuthorization();
+    proxyPipeline.UseMiddleware<TenantIdInjectionMiddleware>();
 
     proxyPipeline.Use(async (context, next) =>
     {
